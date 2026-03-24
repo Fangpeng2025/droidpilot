@@ -1,31 +1,48 @@
 # DroidPilot
 
-Android device automation via Accessibility Service + MCP protocol. Stable, reliable, no ADB required.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Android 11+](https://img.shields.io/badge/Android-11%2B-green.svg)](https://developer.android.com)
+[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-blue.svg)](https://modelcontextprotocol.io)
 
-Unlike ADB-based or screen-mirroring approaches, DroidPilot uses Android's native Accessibility Service for direct UI tree access and reliable gesture execution.
+**Stable Android device automation for AI agents via Accessibility Service + MCP (Model Context Protocol).**
 
-## Architecture
+> Control any Android device from Claude, ChatGPT, or any MCP-compatible AI — no ADB, no USB, no screen mirroring. Just WiFi.
+
+DroidPilot uses Android's native Accessibility Service to directly access the UI tree and perform gestures through OS APIs. This is fundamentally more reliable than ADB-based or OCR-based approaches used by other mobile automation tools.
+
+## Key Features
+
+- **No ADB required** — communicates over WiFi via WebSocket
+- **Native UI tree access** — no screenshot OCR or computer vision needed
+- **Reliable gesture execution** — taps, swipes, and text input via OS APIs
+- **MCP native** — works with Claude Desktop, Claude Code, and any MCP client
+- **18 automation tools** — tap, swipe, type, screenshot, find element, and more
+- **Low token cost** — structured UI data instead of expensive image analysis
+- **Simple setup** — install APK, enable service, connect
+
+## How It Works
 
 ```
-[AI / Claude] --> [MCP Server (PC)] <--WebSocket--> [DroidPilot APK (Android)]
+┌──────────────┐     MCP/stdio     ┌──────────────┐    WebSocket    ┌──────────────────┐
+│  AI Agent    │ ◄──────────────► │  MCP Server  │ ◄────────────► │  Android Device  │
+│  (Claude,    │                   │  (Node.js)   │    WiFi/LAN    │  (Accessibility   │
+│   ChatGPT)   │                   │              │                │   Service + WS)   │
+└──────────────┘                   └──────────────┘                └──────────────────┘
 ```
 
-- **Android APK**: AccessibilityService + WebSocket server running on-device
-- **MCP Server**: Node.js/TypeScript, bridges MCP protocol to Android via WebSocket
+## Why DroidPilot?
 
-## Why Accessibility Service?
-
-| Approach | Reliability | Speed | Setup |
-|----------|-------------|-------|-------|
-| ADB-based (droidrun etc.) | Low - connection drops, limited UI access | Medium | USB/WiFi ADB |
-| Screen mirroring + OCR | Low - OCR errors, high latency | Slow | Complex |
-| **Accessibility Service (DroidPilot)** | **High - native OS integration** | **Fast** | **Install APK, enable service** |
+| Approach | Reliability | Speed | LLM Token Cost | Setup |
+|----------|-------------|-------|----------------|-------|
+| ADB-based (droidrun etc.) | Low — connection drops, limited UI access | Medium | High (screenshot analysis) | USB/WiFi ADB |
+| Screen mirroring + OCR | Low — OCR errors, high latency | Slow | Very High | Complex |
+| **DroidPilot (Accessibility Service)** | **High — native OS integration** | **Fast** | **Low (structured data)** | **Install APK** |
 
 ## Available MCP Tools
 
 | Tool | Description |
 |------|-------------|
-| `connect` | Connect to Android device |
+| `connect` | Connect to Android device by IP |
 | `disconnect` | Disconnect from device |
 | `get_device_info` | Device manufacturer, model, screen size, Android version |
 | `screenshot` | Capture screen as base64 JPEG image |
@@ -33,26 +50,22 @@ Unlike ADB-based or screen-mirroring approaches, DroidPilot uses Android's nativ
 | `find_element` | Search elements by text, ID, class, content description |
 | `tap` | Tap at screen coordinates |
 | `long_press` | Long press at coordinates |
-| `swipe` | Swipe from point A to B |
+| `swipe` | Swipe gesture from point A to B |
 | `scroll` | Scroll in a direction (up/down/left/right) |
 | `pinch` | Pinch zoom in/out |
-| `type_text` | Append text to focused input |
+| `type_text` | Append text to currently focused input |
 | `set_text` | Replace text in focused input |
-| `press_key` | Press system keys (back, home, recents, etc) |
+| `press_key` | System keys: back, home, recents, notifications, etc. |
 | `click_element` | Find and click element by text/ID (more reliable than coordinates) |
-| `wait_for_element` | Wait for element to appear (with timeout) |
+| `wait_for_element` | Wait for element to appear on screen (with timeout) |
 | `open_app` | Launch app by package name |
-| `get_focused` | Get currently focused input element |
+| `get_focused` | Get info about currently focused input element |
 
-## Setup
+## Quick Start
 
 ### 1. Android APK
 
-#### Requirements
-- Android 11+ (API 30+)
-- WiFi connection (same network as PC)
-
-#### Build & Install
+**Requirements:** Android 11+ (API 30+), WiFi (same network as PC)
 
 ```bash
 cd android
@@ -60,20 +73,16 @@ cd android
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Or open the `android/` folder in Android Studio and build from there.
+Or open `android/` in Android Studio and build from there.
 
-#### Enable Accessibility Service
-
-1. Open the DroidPilot app
-2. Tap "Open Accessibility Settings"
-3. Find "Mobile MCP Pro" and enable it
-4. Return to the app
-5. Tap "Start Server"
-6. Note the IP address shown
+Then on the device:
+1. Open DroidPilot app
+2. Tap **"Open Accessibility Settings"**
+3. Enable **"Mobile MCP Pro"**
+4. Return to app, tap **"Start Server"**
+5. Note the **IP address** displayed
 
 ### 2. MCP Server
-
-#### Install
 
 ```bash
 cd mcp-server
@@ -81,59 +90,57 @@ npm install
 npm run build
 ```
 
-#### Configure in Claude Desktop
+### 3. Configure Your AI Client
 
-Add to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "droidpilot": {
-      "command": "node",
-      "args": ["<path-to>/droidpilot/mcp-server/dist/index.js"]
-    }
-  }
-}
-```
-
-#### Configure in Claude Code
-
-Add to your MCP settings:
+**Claude Desktop** — add to `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "droidpilot": {
       "command": "node",
-      "args": ["<path-to>/droidpilot/mcp-server/dist/index.js"]
+      "args": ["/path/to/droidpilot/mcp-server/dist/index.js"]
     }
   }
 }
 ```
 
-### 3. Usage
+**Claude Code** — add to MCP settings:
 
-Once configured, tell the AI:
+```json
+{
+  "mcpServers": {
+    "droidpilot": {
+      "command": "node",
+      "args": ["/path/to/droidpilot/mcp-server/dist/index.js"]
+    }
+  }
+}
+```
+
+### 4. Use It
+
+Tell the AI:
 
 ```
 Connect to my Android device at 192.168.1.100
 ```
 
-Then you can give natural language commands:
+Then give natural language commands:
 
 ```
-Take a screenshot
+Take a screenshot of the current screen
 Open Chrome and navigate to google.com
-Find and tap the search bar, type "hello world"
+Find the search bar and type "hello world"
 Scroll down the page
-Go back to the home screen
+Press the back button
 ```
 
 ## Protocol
 
 Communication between MCP Server and Android uses JSON over WebSocket:
 
-### Request
+**Request:**
 ```json
 {
   "id": "req_1_1234567890",
@@ -142,7 +149,7 @@ Communication between MCP Server and Android uses JSON over WebSocket:
 }
 ```
 
-### Response
+**Response:**
 ```json
 {
   "id": "req_1_1234567890",
@@ -151,13 +158,31 @@ Communication between MCP Server and Android uses JSON over WebSocket:
 }
 ```
 
+## Use Cases
+
+- **AI-powered mobile testing** — let AI agents run QA flows on real devices
+- **Mobile RPA** — automate repetitive tasks across any Android app
+- **Accessibility automation** — build assistive workflows for users
+- **App monitoring** — periodic screenshots and UI state checks
+- **Cross-app workflows** — orchestrate actions across multiple apps
+
 ## Security
 
-- WebSocket runs on local network only (no internet exposure)
-- Optional auth token support for WebSocket connection
-- Network security config allows cleartext for local communication
+- WebSocket runs on **local network only** (no internet exposure)
+- Optional **auth token** support for WebSocket connections
 - No data is sent to external servers
+- All communication stays between your PC and your device on your LAN
+
+## Tech Stack
+
+- **Android**: Kotlin, AccessibilityService, Java-WebSocket
+- **MCP Server**: TypeScript, Node.js, @modelcontextprotocol/sdk
+- **Communication**: WebSocket (JSON protocol)
+
+## Contributing
+
+Contributions are welcome! Feel free to open issues and pull requests.
 
 ## License
 
-MIT
+[MIT](LICENSE)
