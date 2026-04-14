@@ -32,7 +32,7 @@ export const toolDefinitions = {
 
   screenshot: {
     description:
-      "Take a screenshot of the current screen. Returns a base64-encoded JPEG image.",
+      "Take a screenshot of the current screen. Returns a base64-encoded JPEG image. IMPORTANT: Prefer `get_ui_tree` (UI dump) over screenshots whenever possible — UI dumps are far more token-efficient, structured, and reliable for element lookup and automation. Only use screenshots when visual inspection is strictly required (e.g. verifying rendering, images, or non-accessible content).",
     inputSchema: {
       quality: z
         .number()
@@ -45,7 +45,7 @@ export const toolDefinitions = {
 
   get_ui_tree: {
     description:
-      "Get the full UI hierarchy tree of the current screen. Returns all visible elements with their properties (text, bounds, clickable, etc).",
+      "Get the full UI hierarchy tree of the current screen. Returns all visible elements with their properties (text, bounds, clickable, etc). PREFERRED over `screenshot` for understanding screen state — use this first for element discovery, automation, and assertions.",
     inputSchema: {
       maxDepth: z
         .number()
