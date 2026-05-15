@@ -80,6 +80,12 @@ class MobileAccessibilityService : AccessibilityService() {
                 "current_app" -> executeCurrentApp()
                 "list_apps" -> executeListApps(request.params)
                 "clear_text" -> executeClearText()
+                "close_app" -> executeCloseApp(request.params)
+                "double_tap" -> executeDoubleTap(request.params)
+                "drag" -> executeDrag(request.params)
+                "clipboard" -> executeClipboard(request.params)
+                "media_control" -> executeMediaControl(request.params)
+                "volume" -> executeVolume(request.params)
                 "ping" -> CommandResponse.success(request.id, JsonObject().apply { addProperty("pong", true) })
                 else -> CommandResponse.error(request.id, "Unknown command: ${request.command}")
             }
@@ -675,6 +681,256 @@ class MobileAccessibilityService : AccessibilityService() {
             CommandResponse.success(null, JsonObject().apply { addProperty("cleared", true) })
         } else {
             CommandResponse.error(null, "Failed to clear text")
+        }
+    }
+
+    // --- Close App Command ---
+
+    private fun executeCloseApp(params: JsonObject?): CommandResponse {
+        val packageName = params?.get("package")?.asString
+        if (packageName != null) {
+            // Force stop the specified app
+            val intent = Intent(Intent.ACTION_MAIN)
+            intent.addCategory(Intent.CATEGORY_HOME)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            startActivity(intent)
+            Thread.sleep(300)
+            // Use activity manager to force stop
+            try {
+                val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+                am.killBackgroundProcesses(packageName)
+                return CommandResponse.success(null, JsonObject().apply {
+                    addProperty("closed", packageName)
+                })
+            } catch (e: Exception) {
+                return CommandResponse.error(null, "Failed to close app: ${e.message}")
+            }
+        } else {
+            // Close current foreground app
+            val root = rootInActiveWindow ?: return CommandResponse.error(null, "No active window")
+            val pkg = root.packageName?.toString()
+            root.recycle()
+            if (pkg == null) return CommandResponse.error(null, "Could not determine current app")
+
+            // Go home first
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            Thread.sleep(300)
+
+            try {
+                val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+                am.killBackgroundProcesses(pkg)
+                return CommandResponse.success(null, JsonObject().apply {
+                    addProperty("closed", pkg)
+                })
+            } catch (e: Exception) {
+                return CommandResponse.error(null, "Failed to close app: ${e.message}")
+            }
+        }
+    }
+
+    // --- Double Tap Command ---
+
+    private fun executeDoubleTap(params: JsonObject?): CommandResponse {
+        val x = params?.get("x")?.asFloat ?: return CommandResponse.error(null, "Missing x")
+        val y = params.get("y")?.asFloat ?: return CommandResponse.error(null, "Missing y")
+        val interval = params.get("interval")?.asLong ?: 100L // ms between taps
+
+        // First tap
+        val path1 = Path().apply { moveTo(x, y) }
+        val stroke1 = GestureDescription.StrokeDescription(path1, 0, 50)
+        val gesture1 = GestureDescription.Builder().addStroke(stroke1).build()
+        dispatchGestureSync(gesture1, "tap1($x, $y)")
+
+        Thread.sleep(interval)
+
+        // Second tap
+        val path2 = Path().apply { moveTo(x, y) }
+        val stroke2 = GestureDescription.StrokeDescription(path2, 0, 50)
+        val gesture2 = GestureDescription.Builder().addStroke(stroke2).build()
+        return dispatchGestureSync(gesture2, "doubleTap($x, $y)")
+    }
+
+    // --- Drag Command ---
+
+    private fun executeDrag(params: JsonObject?): CommandResponse {
+        val startX = params?.get("startX")?.asFloat ?: return CommandResponse.error(null, "Missing startX")
+        val startY = params.get("startY")?.asFloat ?: return CommandResponse.error(null, "Missing startY")
+        val endX = params.get("endX")?.asFloat ?: return CommandResponse.error(null, "Missing endX")
+        val endY = params.get("endY")?.asFloat ?: return CommandResponse.error(null, "Missing endY")
+        val duration = params.get("duration")?.asLong ?: 800L
+
+        // Drag = long press then swipe
+        val path = Path().apply {
+            moveTo(startX, startY)
+            lineTo(endX, endY)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, duration)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+
+        return dispatchGestureSync(gesture, "drag($startX,$startY -> $endX,$endY)")
+    }
+
+    // --- Clipboard Command ---
+
+    private fun executeClipboard(params: JsonObject?): CommandResponse {
+        val action = params?.get("action")?.asString ?: "get"
+
+        return when (action) {
+            "get" -> {
+                val clip = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                if (!clip.hasPrimaryClip()) {
+                    return CommandResponse.success(null, JsonObject().apply {
+                        addProperty("text", "")
+                        addProperty("hasContent", false)
+                    })
+                }
+                val item = clip.primaryClip?.getItemAt(0)
+                val text = item?.text?.toString() ?: ""
+                CommandResponse.success(null, JsonObject().apply {
+                    addProperty("text", text)
+                    addProperty("hasContent", true)
+                })
+            }
+            "set" -> {
+                val text = params?.get("text")?.asString
+                    ?: return CommandResponse.error(null, "Missing text for clipboard set")
+                val clip = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clip.setPrimaryClip(android.content.ClipData.newPlainText("text", text))
+                CommandResponse.success(null, JsonObject().apply {
+                    addProperty("set", true)
+                    addProperty("text", text)
+                })
+            }
+            else -> CommandResponse.error(null, "Unknown clipboard action: $action. Use get or set")
+        }
+    }
+
+    // --- Media Control Command ---
+
+    private fun executeMediaControl(params: JsonObject?): CommandResponse {
+        val action = params?.get("action")?.asString?.lowercase()
+            ?: return CommandResponse.error(null, "Missing action. Use: play, pause, play_pause, next, previous, stop")
+
+        val keyCode = when (action) {
+            "play" -> android.view.KeyEvent.KEYCODE_MEDIA_PLAY
+            "pause" -> android.view.KeyEvent.KEYCODE_MEDIA_PAUSE
+            "play_pause" -> android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+            "next" -> android.view.KeyEvent.KEYCODE_MEDIA_NEXT
+            "previous" -> android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS
+            "stop" -> android.view.KeyEvent.KEYCODE_MEDIA_STOP
+            "fast_forward" -> android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
+            "rewind" -> android.view.KeyEvent.KEYCODE_MEDIA_REWIND
+            else -> return CommandResponse.error(null, "Unknown media action: $action")
+        }
+
+        // Inject key event via accessibility service dispatchGesture
+        // Use performGlobalAction is not available for media keys
+        // Instead use Instrumentation or dispatchKeyEvent through the window
+        try {
+            // Use Android's media session manager approach
+            val downEvent = android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode)
+            val upEvent = android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode)
+
+        // AccessibilityService can inject key events on API 24+
+        if (Build.VERSION.SDK_INT >= 24) {
+            val dispatchResult = dispatchGesture(
+                GestureDescription.Builder().build(), null, null
+            )
+            // For media keys, we need a different approach
+            // Use the service's onKeyEvent or send ordered broadcast
+        }
+
+            // Alternative: use AudioManager dispatch
+            val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+            when (action) {
+                "play_pause" -> am.dispatchMediaKeyEvent(
+                    android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode)
+                )
+                "next" -> am.dispatchMediaKeyEvent(
+                    android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode)
+                )
+                "previous" -> am.dispatchMediaKeyEvent(
+                    android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode)
+                )
+                else -> am.dispatchMediaKeyEvent(
+                    android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode)
+                )
+            }
+            am.dispatchMediaKeyEvent(
+                android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode)
+            )
+
+            return CommandResponse.success(null, JsonObject().apply {
+                addProperty("action", action)
+            })
+        } catch (e: Exception) {
+            return CommandResponse.error(null, "Media control failed: ${e.message}")
+        }
+    }
+
+    // --- Volume Command ---
+
+    private fun executeVolume(params: JsonObject?): CommandResponse {
+        val action = params?.get("action")?.asString?.lowercase()
+            ?: return CommandResponse.error(null, "Missing action. Use: up, down, mute, get, set")
+        val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+
+        when (action) {
+            "up" -> {
+                am.adjustVolume(android.media.AudioManager.ADJUST_RAISE, android.media.AudioManager.FLAG_SHOW_UI)
+                return CommandResponse.success(null, JsonObject().apply { addProperty("action", "volume_up") })
+            }
+            "down" -> {
+                am.adjustVolume(android.media.AudioManager.ADJUST_LOWER, android.media.AudioManager.FLAG_SHOW_UI)
+                return CommandResponse.success(null, JsonObject().apply { addProperty("action", "volume_down") })
+            }
+            "mute" -> {
+                am.adjustVolume(android.media.AudioManager.ADJUST_MUTE, android.media.AudioManager.FLAG_SHOW_UI)
+                return CommandResponse.success(null, JsonObject().apply { addProperty("action", "muted") })
+            }
+            "unmute" -> {
+                am.adjustVolume(android.media.AudioManager.ADJUST_UNMUTE, android.media.AudioManager.FLAG_SHOW_UI)
+                return CommandResponse.success(null, JsonObject().apply { addProperty("action", "unmuted") })
+            }
+            "get" -> {
+                val stream = params.get("stream")?.asString ?: "music"
+                val streamType = when (stream) {
+                    "music" -> android.media.AudioManager.STREAM_MUSIC
+                    "ring" -> android.media.AudioManager.STREAM_RING
+                    "notification" -> android.media.AudioManager.STREAM_NOTIFICATION
+                    "alarm" -> android.media.AudioManager.STREAM_ALARM
+                    "call" -> android.media.AudioManager.STREAM_VOICE_CALL
+                    "system" -> android.media.AudioManager.STREAM_SYSTEM
+                    else -> android.media.AudioManager.STREAM_MUSIC
+                }
+                val current = am.getStreamVolume(streamType)
+                val max = am.getStreamMaxVolume(streamType)
+                return CommandResponse.success(null, JsonObject().apply {
+                    addProperty("current", current)
+                    addProperty("max", max)
+                    addProperty("stream", stream)
+                })
+            }
+            "set" -> {
+                val level = params.get("level")?.asInt
+                    ?: return CommandResponse.error(null, "Missing level for volume set")
+                val stream = params.get("stream")?.asString ?: "music"
+                val streamType = when (stream) {
+                    "music" -> android.media.AudioManager.STREAM_MUSIC
+                    "ring" -> android.media.AudioManager.STREAM_RING
+                    "notification" -> android.media.AudioManager.STREAM_NOTIFICATION
+                    "alarm" -> android.media.AudioManager.STREAM_ALARM
+                    "call" -> android.media.AudioManager.STREAM_VOICE_CALL
+                    "system" -> android.media.AudioManager.STREAM_SYSTEM
+                    else -> android.media.AudioManager.STREAM_MUSIC
+                }
+                am.setStreamVolume(streamType, level, android.media.AudioManager.FLAG_SHOW_UI)
+                return CommandResponse.success(null, JsonObject().apply {
+                    addProperty("set", level)
+                    addProperty("stream", stream)
+                })
+            }
+            else -> return CommandResponse.error(null, "Unknown volume action: $action")
         }
     }
 }
