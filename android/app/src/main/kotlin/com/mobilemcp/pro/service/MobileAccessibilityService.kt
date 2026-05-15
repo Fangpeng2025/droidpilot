@@ -77,6 +77,9 @@ class MobileAccessibilityService : AccessibilityService() {
                 "click_element" -> executeClickElement(request.params)
                 "get_focused" -> executeGetFocused()
                 "notifications" -> executeGetNotifications()
+                "current_app" -> executeCurrentApp()
+                "list_apps" -> executeListApps(request.params)
+                "clear_text" -> executeClearText()
                 "ping" -> CommandResponse.success(request.id, JsonObject().apply { addProperty("pong", true) })
                 else -> CommandResponse.error(request.id, "Unknown command: ${request.command}")
             }
@@ -596,5 +599,82 @@ class MobileAccessibilityService : AccessibilityService() {
         if (className != null && node.className?.toString()?.contains(className, ignoreCase = true) != true) return false
         if (contentDesc != null && node.contentDescription?.toString()?.contains(contentDesc, ignoreCase = true) != true) return false
         return true
+    }
+
+    // --- App Info Commands ---
+
+    private fun executeCurrentApp(): CommandResponse {
+        val root = rootInActiveWindow ?: return CommandResponse.error(null, "No active window")
+        val pkg = root.packageName?.toString()
+        root.recycle()
+        return if (pkg != null) {
+            val appInfo = packageManager.getApplicationInfo(pkg, 0)
+            val label = packageManager.getApplicationLabel(appInfo).toString()
+            CommandResponse.success(null, JsonObject().apply {
+                addProperty("package", pkg)
+                addProperty("name", label)
+            })
+        } else {
+            CommandResponse.error(null, "Could not determine current app")
+        }
+    }
+
+    private fun executeListApps(params: JsonObject?): CommandResponse {
+        val filter = params?.get("filter")?.asString
+        val maxResults = params?.get("maxResults")?.asInt ?: 50
+        val apps = packageManager.getInstalledApplications(0)
+        val result = com.google.gson.JsonArray()
+
+        var count = 0
+        for (app in apps) {
+            if (count >= maxResults) break
+            val pkg = app.packageName
+            val label = try {
+                packageManager.getApplicationLabel(app).toString()
+            } catch (e: Exception) {
+                continue
+            }
+
+            // If filter provided, match against package name or label
+            if (filter != null) {
+                if (!pkg.contains(filter, ignoreCase = true) &&
+                    !label.contains(filter, ignoreCase = true)) continue
+            }
+
+            // Only include apps with launch intent (skip system services)
+            val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+            val isLaunchable = launchIntent != null
+
+            result.add(JsonObject().apply {
+                addProperty("package", pkg)
+                addProperty("name", label)
+                addProperty("launchable", isLaunchable)
+            })
+            count++
+        }
+
+        return CommandResponse.success(null, JsonObject().apply {
+            add("apps", result)
+            addProperty("count", count)
+        })
+    }
+
+    // --- Clear Text Command ---
+
+    private fun executeClearText(): CommandResponse {
+        val focused = findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            ?: return CommandResponse.error(null, "No focused input field")
+
+        val args = android.os.Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+        }
+        val result = focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        focused.recycle()
+
+        return if (result) {
+            CommandResponse.success(null, JsonObject().apply { addProperty("cleared", true) })
+        } else {
+            CommandResponse.error(null, "Failed to clear text")
+        }
     }
 }
