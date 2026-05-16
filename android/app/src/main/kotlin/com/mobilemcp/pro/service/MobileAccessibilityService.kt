@@ -18,8 +18,8 @@ import com.mobilemcp.pro.model.CommandRequest
 import com.mobilemcp.pro.model.CommandResponse
 import com.mobilemcp.pro.model.UINode
 import com.mobilemcp.pro.server.WebSocketCommandServer
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
+import io.github.hzkitty.RapidOCR
+import io.github.hzkitty.entity.OcrResult
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
@@ -939,7 +939,7 @@ class MobileAccessibilityService : AccessibilityService() {
         }
     }
 
-    // --- OCR Command (Google ML Kit) ---
+    // --- OCR Command (RapidOCR4j) ---
     
     private fun executeOCR(params: JsonObject?): CommandResponse {
         try {
@@ -959,63 +959,40 @@ class MobileAccessibilityService : AccessibilityService() {
             val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 ?: return CommandResponse.error(null, "Failed to decode image")
             
-            // 使用 ML Kit 文字识别
-            val inputImage = InputImage.fromBitmap(bitmap, 0)
-            val recognizer = TextRecognition.getClient()
-            
-            val latch = CountDownLatch(1)
-            var ocrResult: com.google.mlkit.vision.text.Text? = null
-            var error: Exception? = null
-            
-            recognizer.process(inputImage)
-                .addOnSuccessListener { text ->
-                    ocrResult = text
-                    latch.countDown()
-                }
-                .addOnFailureListener { e ->
-                    error = e
-                    latch.countDown()
-                }
-            
-            latch.await(10, TimeUnit.SECONDS)
-            
-            if (error != null) {
-                return CommandResponse.error(null, "OCR failed: ${error!!.message}")
-            }
-            
-            val text = ocrResult ?: return CommandResponse.error(null, "OCR returned null")
+            // 使用 RapidOCR 识别
+            val rapidOCR = RapidOCR.create(this)
+            val ocrResult: OcrResult = rapidOCR.run(bitmap)
             
             // 构建返回结果
             val wordsArray = JsonArray()
             val textBuilder = StringBuilder()
             
-            for (block in text.textBlocks) {
-                for (line in block.lines) {
-                    val wordObj = JsonObject().apply {
-                        addProperty("text", line.text)
-                        addProperty("confidence", line.confidence ?: 0.0f)
-                        
-                        // 边界框
-                        val bounds = line.boundingBox
-                        bounds?.let {
-                            val boundsObj = JsonObject().apply {
-                                addProperty("left", it.left)
-                                addProperty("top", it.top)
-                                addProperty("right", it.right)
-                                addProperty("bottom", it.bottom)
-                            }
-                            add("bounds", boundsObj)
+            ocrResult.recRes?.forEach { rec ->
+                val wordObj = JsonObject().apply {
+                    addProperty("text", rec.text)
+                    addProperty("confidence", rec.confidence)
+                    
+                    // 边界框 (四个角坐标)
+                    val boxes = rec.dtBoxes
+                    if (boxes != null && boxes.size >= 4) {
+                        val boundsObj = JsonObject().apply {
+                            addProperty("left", boxes[0].x.toInt())
+                            addProperty("top", boxes[0].y.toInt())
+                            addProperty("right", boxes[2].x.toInt())
+                            addProperty("bottom", boxes[2].y.toInt())
                         }
+                        add("bounds", boundsObj)
                     }
-                    wordsArray.add(wordObj)
-                    textBuilder.append(line.text).append(" ")
                 }
+                wordsArray.add(wordObj)
+                textBuilder.append(rec.text).append(" ")
             }
             
             val resultObj = JsonObject().apply {
                 addProperty("text", textBuilder.toString().trim())
                 add("words", wordsArray)
                 addProperty("wordCount", wordsArray.size())
+                addProperty("elapseTime", ocrResult.elapseTime)
             }
             
             return CommandResponse.success(null, resultObj)

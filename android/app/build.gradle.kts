@@ -48,6 +48,6 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     
-    // Google ML Kit OCR (使用 Play Services 版本)
-    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+    // RapidOCR4j Android (中文识别)
+    implementation("io.github.hzkitty:rapidocr4j-android:1.0.0")
 }
