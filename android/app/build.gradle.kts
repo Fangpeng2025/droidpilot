@@ -49,5 +49,5 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     
     // Google ML Kit OCR (中文识别)
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition-chinese:19.0.1")
 }
