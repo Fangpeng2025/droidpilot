@@ -20,7 +20,6 @@ import com.mobilemcp.pro.model.UINode
 import com.mobilemcp.pro.server.WebSocketCommandServer
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.TextRecognizerOptions
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
@@ -962,7 +961,7 @@ class MobileAccessibilityService : AccessibilityService() {
             
             // 使用 ML Kit 文字识别
             val inputImage = InputImage.fromBitmap(bitmap, 0)
-            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val recognizer = TextRecognition.getClient()
             
             val latch = CountDownLatch(1)
             var ocrResult: com.google.mlkit.vision.text.Text? = null
