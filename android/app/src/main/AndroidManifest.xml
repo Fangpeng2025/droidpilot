@@ -18,7 +18,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MobileMcpPro"
         android:networkSecurityConfig="@xml/network_security_config"
-        tools:replace="android:theme">
+        tools:replace="android:theme,android:allowBackup">
 
         <activity
             android:name=".MainActivity"
