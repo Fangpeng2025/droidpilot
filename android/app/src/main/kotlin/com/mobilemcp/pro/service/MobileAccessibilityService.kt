@@ -961,7 +961,7 @@ class MobileAccessibilityService : AccessibilityService() {
             
             // 使用 ML Kit 文字识别
             val inputImage = InputImage.fromBitmap(bitmap, 0)
-            val recognizer = TextRecognition.getClient()
+            val recognizer = TextRecognition.getClient(com.google.mlkit.vision.text.TextRecognizerOptions.DEFAULT_OPTIONS)
             
             val latch = CountDownLatch(1)
             var ocrResult: com.google.mlkit.vision.text.Text? = null
