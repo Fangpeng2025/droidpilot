@@ -18,8 +18,9 @@ import com.mobilemcp.pro.model.CommandRequest
 import com.mobilemcp.pro.model.CommandResponse
 import com.mobilemcp.pro.model.UINode
 import com.mobilemcp.pro.server.WebSocketCommandServer
-import com.rapidai.ocr.onnx.RapidOcrOnnxLibrary
-import com.rapidai.ocr.onnx.bean.OcrResult
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
@@ -939,7 +940,7 @@ class MobileAccessibilityService : AccessibilityService() {
         }
     }
 
-    // --- OCR Command (RapidOCR) ---
+    // --- OCR Command (Google ML Kit) ---
     
     private fun executeOCR(params: JsonObject?): CommandResponse {
         try {
@@ -959,37 +960,56 @@ class MobileAccessibilityService : AccessibilityService() {
             val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 ?: return CommandResponse.error(null, "Failed to decode image")
             
-            // 使用 RapidOCR 识别
-            val ocrResult: OcrResult = RapidOcrOnnxLibrary.getInstance()
-                .init(this)
-                .ocr(bitmap, 0)
+            // 使用 ML Kit 中文识别
+            val inputImage = InputImage.fromBitmap(bitmap, 0)
+            val recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions())
+            
+            val latch = CountDownLatch(1)
+            var ocrResult: com.google.mlkit.vision.text.Text? = null
+            var error: Exception? = null
+            
+            recognizer.process(inputImage)
+                .addOnSuccessListener { text ->
+                    ocrResult = text
+                    latch.countDown()
+                }
+                .addOnFailureListener { e ->
+                    error = e
+                    latch.countDown()
+                }
+            
+            latch.await(10, TimeUnit.SECONDS)
+            
+            if (error != null) {
+                return CommandResponse.error(null, "OCR failed: ${error!!.message}")
+            }
+            
+            val text = ocrResult ?: return CommandResponse.error(null, "OCR returned null")
             
             // 构建返回结果
             val wordsArray = JsonArray()
             val textBuilder = StringBuilder()
             
-            ocrResult.strRes?.forEachIndexed { index, text ->
-                if (text.isNotBlank()) {
-                    val points = ocrResult.points?.getOrNull(index)
+            for (block in text.textBlocks) {
+                for (line in block.lines) {
                     val wordObj = JsonObject().apply {
-                        addProperty("text", text)
-                        addProperty("confidence", ocrResult.detectTimes?.getOrNull(index) ?: 0.0f)
+                        addProperty("text", line.text)
+                        addProperty("confidence", line.confidence ?: 0.0f)
                         
                         // 边界框
-                        points?.let { pts ->
+                        val bounds = line.boundingBox
+                        bounds?.let {
                             val boundsObj = JsonObject().apply {
-                                if (pts.size >= 4) {
-                                    addProperty("left", pts[0].x.toInt())
-                                    addProperty("top", pts[0].y.toInt())
-                                    addProperty("right", pts[2].x.toInt())
-                                    addProperty("bottom", pts[2].y.toInt())
-                                }
+                                addProperty("left", it.left)
+                                addProperty("top", it.top)
+                                addProperty("right", it.right)
+                                addProperty("bottom", it.bottom)
                             }
                             add("bounds", boundsObj)
                         }
                     }
                     wordsArray.add(wordObj)
-                    textBuilder.append(text).append(" ")
+                    textBuilder.append(line.text).append(" ")
                 }
             }
             
