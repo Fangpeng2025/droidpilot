@@ -19,6 +19,7 @@ import com.mobilemcp.pro.model.CommandResponse
 import com.mobilemcp.pro.model.UINode
 import com.mobilemcp.pro.server.WebSocketCommandServer
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import kotlinx.coroutines.*
