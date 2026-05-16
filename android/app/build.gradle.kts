@@ -11,8 +11,8 @@ android {
         applicationId = "com.mobilemcp.pro"
         minSdk = 30
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0-ocr"
     }
 
     buildTypes {
@@ -27,7 +27,7 @@ android {
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
@@ -47,4 +47,7 @@ dependencies {
     implementation("org.java-websocket:Java-WebSocket:1.5.6")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    
+    // RapidOCR Android (中文识别)
+    implementation("com.github.RapidAI:RapidOcrAndroidOnnxLibrary:2.0.0")
 }

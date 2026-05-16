@@ -5,17 +5,21 @@ import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Path
+import android.graphics.Rect
 import android.os.Build
 import android.util.Base64
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.mobilemcp.pro.model.CommandRequest
 import com.mobilemcp.pro.model.CommandResponse
 import com.mobilemcp.pro.model.UINode
 import com.mobilemcp.pro.server.WebSocketCommandServer
+import com.rapidai.ocr.onnx.RapidOcrOnnxLibrary
+import com.rapidai.ocr.onnx.bean.OcrResult
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
@@ -86,6 +90,7 @@ class MobileAccessibilityService : AccessibilityService() {
                 "clipboard" -> executeClipboard(request.params)
                 "media_control" -> executeMediaControl(request.params)
                 "volume" -> executeVolume(request.params)
+                "ocr" -> executeOCR(request.params)
                 "ping" -> CommandResponse.success(request.id, JsonObject().apply { addProperty("pong", true) })
                 else -> CommandResponse.error(request.id, "Unknown command: ${request.command}")
             }
@@ -931,6 +936,74 @@ class MobileAccessibilityService : AccessibilityService() {
                 })
             }
             else -> return CommandResponse.error(null, "Unknown volume action: $action")
+        }
+    }
+
+    // --- OCR Command (RapidOCR) ---
+    
+    private fun executeOCR(params: JsonObject?): CommandResponse {
+        try {
+            // 先截图
+            val screenshotResult = executeScreenshot(params)
+            if (!screenshotResult.success) {
+                return CommandResponse.error(null, "Screenshot failed for OCR")
+            }
+            
+            val imageData = screenshotResult.data?.get("image")?.asString
+            if (imageData.isNullOrEmpty()) {
+                return CommandResponse.error(null, "No image data for OCR")
+            }
+            
+            // Base64 解码为 Bitmap
+            val bytes = Base64.decode(imageData, Base64.DEFAULT)
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                ?: return CommandResponse.error(null, "Failed to decode image")
+            
+            // 使用 RapidOCR 识别
+            val ocrResult: OcrResult = RapidOcrOnnxLibrary.getInstance()
+                .init(this)
+                .ocr(bitmap, 0)
+            
+            // 构建返回结果
+            val wordsArray = JsonArray()
+            val textBuilder = StringBuilder()
+            
+            ocrResult.strRes?.forEachIndexed { index, text ->
+                if (text.isNotBlank()) {
+                    val points = ocrResult.points?.getOrNull(index)
+                    val wordObj = JsonObject().apply {
+                        addProperty("text", text)
+                        addProperty("confidence", ocrResult.detectTimes?.getOrNull(index) ?: 0.0f)
+                        
+                        // 边界框
+                        points?.let { pts ->
+                            val boundsObj = JsonObject().apply {
+                                if (pts.size >= 4) {
+                                    addProperty("left", pts[0].x.toInt())
+                                    addProperty("top", pts[0].y.toInt())
+                                    addProperty("right", pts[2].x.toInt())
+                                    addProperty("bottom", pts[2].y.toInt())
+                                }
+                            }
+                            add("bounds", boundsObj)
+                        }
+                    }
+                    wordsArray.add(wordObj)
+                    textBuilder.append(text).append(" ")
+                }
+            }
+            
+            val resultObj = JsonObject().apply {
+                addProperty("text", textBuilder.toString().trim())
+                add("words", wordsArray)
+                addProperty("wordCount", wordsArray.size())
+            }
+            
+            return CommandResponse.success(null, resultObj)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "OCR error", e)
+            return CommandResponse.error(null, "OCR error: ${e.message}")
         }
     }
 }
