@@ -19,9 +19,7 @@ import com.mobilemcp.pro.model.CommandResponse
 import com.mobilemcp.pro.model.UINode
 import com.mobilemcp.pro.server.WebSocketCommandServer
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
@@ -961,9 +959,9 @@ class MobileAccessibilityService : AccessibilityService() {
             val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 ?: return CommandResponse.error(null, "Failed to decode image")
             
-            // 使用 ML Kit 中文识别
+            // 使用 ML Kit 文字识别
             val inputImage = InputImage.fromBitmap(bitmap, 0)
-            val recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions())
+            val recognizer = TextRecognition.getClient()
             
             val latch = CountDownLatch(1)
             var ocrResult: com.google.mlkit.vision.text.Text? = null

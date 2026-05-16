@@ -48,6 +48,6 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     
-    // Google ML Kit OCR (中文识别)
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.0")
+    // Google ML Kit OCR
+    implementation("com.google.mlkit:text-recognition:16.0.0")
 }
